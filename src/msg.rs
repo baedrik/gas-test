@@ -1,5 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use cosmwasm_std::{HumanAddr};
+use secret_toolkit::permit::Permit;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
@@ -18,6 +20,11 @@ pub enum HandleMsg {
 pub enum QueryMsg {
     // GetCount returns the current count as a json-encoded number
     GetCount {},
+    Test {
+        addr: HumanAddr,
+        hash: String,
+        permit: Permit,
+    }
 }
 
 // We define a custom struct for each query response

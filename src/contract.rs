@@ -1,10 +1,13 @@
 use cosmwasm_std::{
-    debug_print, to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier,
-    StdError, StdResult, Storage,
+    to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier,
+    StdError, StdResult, Storage, QueryResult, HumanAddr, Uint128,
 };
-
+use secret_toolkit::utils::{Query};
 use crate::msg::{CountResponse, HandleMsg, InitMsg, QueryMsg};
 use crate::state::{config, config_read, State};
+use secret_toolkit::permit::Permit;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -18,7 +21,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 
     config(&mut deps.storage).save(&state)?;
 
-    debug_print!("Contract was initialized by {}", env.message.sender);
 
     Ok(InitResponse::default())
 }
@@ -40,11 +42,9 @@ pub fn try_increment<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<HandleResponse> {
     config(&mut deps.storage).update(|mut state| {
         state.count += 1;
-        debug_print!("count = {}", state.count);
         Ok(state)
     })?;
 
-    debug_print("count incremented successfully");
     Ok(HandleResponse::default())
 }
 
@@ -61,7 +61,6 @@ pub fn try_reset<S: Storage, A: Api, Q: Querier>(
         state.count = count;
         Ok(state)
     })?;
-    debug_print("count reset successfully");
     Ok(HandleResponse::default())
 }
 
@@ -71,7 +70,47 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
+        QueryMsg::Test {addr, hash, permit} => query_test(deps, addr, hash, permit),
     }
+}
+
+fn query_test<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    addr: HumanAddr,
+    hash: String,
+    permit: Permit,
+) -> QueryResult {
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+    pub struct BalWrap {
+        pub balance: Bal,
+    }
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+    pub struct Bal {
+        pub amount: Uint128,
+    }
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Testmsg {
+        WithPermit {
+            permit: Permit,
+            query: QueryWithPermit,
+        },
+    }
+    impl Query for Testmsg {
+        const BLOCK_SIZE: usize = 256usize;
+    }
+    #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+    #[serde(rename_all = "snake_case")]
+    pub enum QueryWithPermit {
+        Balance {},
+    }
+    let msg = Testmsg::WithPermit { 
+        permit,
+        query: QueryWithPermit::Balance {} };
+    let resp: BalWrap =
+        msg.query(&deps.querier, hash, addr)?;
+        
+    to_binary(&resp.balance)
 }
 
 fn query_count<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>) -> StdResult<CountResponse> {
